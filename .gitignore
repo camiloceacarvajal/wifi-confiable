@@ -1,0 +1,3 @@
+# La config real lleva el BSSID del router, que es geolocalizable.
+# Se versiona solo el ejemplo.
+wifi-confiable.conf

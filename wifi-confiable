@@ -1,0 +1,76 @@
+#!/bin/sh
+# wifi-confiable — responde 0 si esta máquina está asociada a la wifi de confianza
+# y por tanto se puede omitir la contraseña. Cualquier duda => 1 (pide contraseña).
+#
+# Se invoca desde /etc/pam.d/cosmic-greeter vía pam_exec.
+# Uso manual:  wifi-confiable --test [usuario]
+set -u
+
+# PAM ejecuta esto con un entorno mínimo: el PATH que hereda NO trae /usr/sbin,
+# que es donde vive iw. Sin esta línea el chequeo falla siempre bajo PAM aunque
+# funcione perfecto desde una terminal.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+CONF="${WIFI_CONFIABLE_CONF:-/etc/wifi-confiable.conf}"
+IFACE=""; SSID=""; BSSID=""; USERS=""; MODE="unlock"
+
+TEST=0
+if [ "${1:-}" = "--test" ]; then
+    TEST=1
+    PAM_USER="${2:-$(id -un)}"
+fi
+
+log() {
+    logger -t wifi-confiable -p auth.notice "$1" 2>/dev/null
+    [ "$TEST" = 1 ] && echo "$1"
+    return 0
+}
+deny() { log "DENEGADO: $1"; exit 1; }
+
+# Que un binario ausente se diga por su nombre, en vez de disfrazarse de
+# "la wifi no es la buena".
+for _c in iw nmcli loginctl timeout; do
+    command -v "$_c" >/dev/null 2>&1 || deny "falta el comando '$_c' (PATH=$PATH)"
+done
+
+[ -r "$CONF" ] || deny "no puedo leer $CONF"
+. "$CONF"
+
+u="${PAM_USER:-}"
+[ -n "$u" ] || deny "sin PAM_USER"
+
+# 1. ¿usuario autorizado?
+case " $USERS " in
+    *" $u "*) ;;
+    *) deny "usuario '$u' no está en USERS" ;;
+esac
+
+# 2. ¿es un desbloqueo o un login nuevo?
+if [ "$MODE" = "unlock" ]; then
+    sess=$(timeout 3 loginctl show-user "$u" -p Sessions --value 2>/dev/null)
+    [ -n "$sess" ] || deny "MODE=unlock y '$u' no tiene sesión abierta (esto es un login, no un desbloqueo)"
+fi
+
+# 3. ¿estamos asociados a la wifi esperada? (SSID + BSSID)
+link=$(timeout 3 iw dev "$IFACE" link 2>/dev/null) || deny "iw dev $IFACE link falló"
+cur_bssid=$(printf '%s\n' "$link" | sed -n 's/^Connected to \([0-9a-fA-F:]*\).*/\1/p' | tr 'A-F' 'a-f')
+cur_ssid=$(printf '%s\n' "$link" | sed -n 's/^[[:space:]]*SSID: //p')
+
+[ -n "$cur_bssid" ] || deny "$IFACE no está asociada a ninguna wifi"
+[ "$cur_ssid" = "$SSID" ] || deny "SSID '$cur_ssid' no es '$SSID'"
+printf '%s\n' "$BSSID" | tr 'A-F ' 'a-f\n' | grep -qx "$cur_bssid" \
+    || deny "BSSID $cur_bssid no está en la lista de confianza"
+
+# 4. La red debe ser cifrada: el handshake WPA prueba que el AP conoce la clave.
+#    Sin esto, cualquiera monta un AP abierto llamado igual y entra.
+prof=$(timeout 3 nmcli -g GENERAL.CONNECTION dev show "$IFACE" 2>/dev/null)
+[ -n "$prof" ] || deny "NetworkManager no reporta perfil activo en $IFACE"
+km=$(timeout 3 nmcli -g 802-11-wireless-security.key-mgmt con show "$prof" 2>/dev/null)
+case "$km" in
+    wpa-psk|wpa-eap|sae) ;;
+    *) deny "el perfil '$prof' no es una red cifrada (key-mgmt='$km')" ;;
+esac
+
+log "OK: $u en $SSID / $cur_bssid (perfil '$prof', $km) — se omite la contraseña"
+exit 0

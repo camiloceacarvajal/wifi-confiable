@@ -1,0 +1,20 @@
+# Wifi de confianza para omitir la contraseña de desbloqueo.
+# Cambia algo aquí y aplica al instante: no hay que reiniciar nada.
+
+IFACE=wlp4s0            # el tuyo sale de: iw dev
+
+# Nombre de la red.
+SSID=MiRedDeCasa
+
+# MAC del router (separa varias con espacios si tienes repetidores o
+# el router usa una MAC distinta por banda 2.4/5 GHz).
+BSSID="aa:bb:cc:dd:ee:ff"   # sale de: iw dev wlp4s0 link
+
+# Usuarios a los que se les aplica (separados por espacios).
+USERS="tuusuario"
+
+# unlock = solo saltarse la contraseña al desbloquear una sesión ya abierta.
+# always = también en el login inicial tras arrancar.
+#   Ojo con "always": al no escribir la contraseña, el llavero de GNOME
+#   (contraseñas guardadas de Brave, etc.) queda cerrado y te lo pedirá aparte.
+MODE=unlock
