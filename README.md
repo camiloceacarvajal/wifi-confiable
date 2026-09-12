@@ -1,6 +1,47 @@
 # wifi-confiable
 
-Omite la contraseña de desbloqueo cuando el portátil está asociado a tu wifi de casa.
+Módulo PAM que omite la contraseña de desbloqueo cuando el equipo está asociado
+a tu wifi de casa. Para Linux con COSMIC (Pop!_OS).
+
+> **El razonamiento de seguridad:** lo que autentica **no es el SSID**. Un
+> nombre de red se clona en segundos —basta levantar un AP abierto llamado igual
+> y el equipo se desbloquearía solo—. Lo que no se falsifica es el **handshake
+> WPA2**, que es mutuo: para que la asociación llegue a completarse, el AP tiene
+> que demostrar que conoce la clave. Por eso la comprobación decisiva no es
+> "¿cómo se llama esta red?" sino "¿NetworkManager confirma que está cifrada?".
+
+| | |
+|---|---|
+| Superficie | **un archivo** del sistema: `/etc/pam.d/cosmic-greeter` |
+| Reversible | `sudo ./instalar.sh --quitar`, y copia con fecha antes de tocar nada |
+| Falla cerrado | ante cualquier duda deniega y cae a la contraseña de siempre |
+| Verificación | si la edición del archivo PAM no queda exacta, se revierte sola |
+
+## Instalar
+
+```bash
+sudo ./instalar.sh            # instala
+sudo ./instalar.sh --quitar   # lo deja como estaba
+```
+
+El repositorio trae `wifi-confiable.conf.ejemplo`, no una configuración real: el
+BSSID es la MAC del router y se puede geolocalizar en bases públicas tipo WiGLE,
+o sea que publicarla es publicar dónde vives. El instalador copia el ejemplo y
+avisa de qué hay que editar:
+
+```bash
+iw dev                  # tu interfaz
+iw dev wlp4s0 link      # tu SSID y tu BSSID
+```
+
+## Comprobarlo sin instalar nada
+
+```bash
+WIFI_CONFIABLE_CONF=./wifi-confiable.conf.ejemplo ./wifi-confiable --test tuusuario
+```
+
+Imprime la razón exacta por la que dice sí o no. Devuelve 0 si se puede omitir la
+contraseña y 1 en cualquier otro caso.
 
 ## Qué hace exactamente
 
